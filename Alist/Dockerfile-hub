@@ -1,45 +1,60 @@
-FROM python:3.11-slim-bullseye
-ADD https://github.com/ykxVK8yL5L/alist/releases/download/latest/alist-linux-amd64.tar.gz /usr/bin/
+# 支持多平台构建
+FROM --platform=$BUILDPLATFORM python:3.11-slim-bullseye
 
-RUN cd /usr/bin && \
-  tar -xzf alist-linux-amd64.tar.gz && \
-  rm alist-linux-amd64.tar.gz
+# 获取目标平台（由 buildx 自动传入）
+ARG TARGETPLATFORM
 
-RUN chmod a+x /usr/bin/alist
+# 根据平台判断架构并下载对应的 Alist 二进制
+RUN set -eux; \
+  ARCH=""; \
+  case "$TARGETPLATFORM" in \
+    "linux/amd64") ARCH="amd64" ;; \
+    "linux/arm64") ARCH="arm64" ;; \
+    "linux/arm/v7") ARCH="armv7" ;; \
+    *) echo "Unsupported platform: $TARGETPLATFORM" && exit 1 ;; \
+  esac; \
+  curl -L -o /usr/bin/alist.tar.gz https://github.com/ykxVK8yL5L/alist/releases/download/latest/alist-linux-$ARCH.tar.gz && \
+  cd /usr/bin && \
+  tar -xzf alist.tar.gz && \
+  rm alist.tar.gz && \
+  chmod a+x /usr/bin/alist
 
-RUN set -x && \
+# 安装依赖
+RUN set -eux && \
   apt-get update && \
   apt-get upgrade -y && \
-  apt-get install --no-install-recommends -y git \
-  rclone 
+  apt-get install --no-install-recommends -y git rclone && \
+  chmod -R 777 /var/log
 
-RUN chmod -R 777 /var/log
-
-# Set up a new user named "user" with user ID 1000
+# 添加普通用户
 RUN useradd -m -u 1000 user
 
-# Switch to the "user" user
+# 切换用户
 USER user
 
-# Set home to the user's home directory
+# 设置环境变量
 ENV HOME=/home/user \
-  PATH=/home/user/.local/bin:$PATH
+    PATH=/home/user/.local/bin:$PATH
 
-# Set the working directory to the user's home directory
+# 设置工作目录
 WORKDIR $HOME/alist
 
+# 安装 yacron
 RUN pip install yacron
+
+# 拷贝计划任务配置文件
 COPY --chown=user yacrontab.yaml /etc/yacron.d/yacrontab.yaml
 
-RUN rclone config -h
+# 测试 rclone 是否安装成功（可选）
+RUN rclone version
 
-RUN --mount=type=secret,id=RCLONE_CONF,mode=0444,required=true \
-  echo "$(cat /run/secrets/RCLONE_CONF)" > ~/.config/rclone/rclone.conf
+# 秘密挂载写入（这段建议移出 Dockerfile，用 docker run 或 compose 处理）
+# RUN --mount=type=secret,id=RCLONE_CONF,mode=0444,required=true \
+#   echo "$(cat /run/secrets/RCLONE_CONF)" > ~/.config/rclone/rclone.conf
 
+# 拷贝启动脚本
 COPY --chown=user start.sh /home/user/start.sh
-
 RUN chmod a+x /home/user/start.sh
 
-CMD [ "/home/user/start.sh" ]
-
 EXPOSE 5244
+CMD ["/home/user/start.sh"]
