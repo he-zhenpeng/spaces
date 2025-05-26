@@ -1,6 +1,6 @@
 # 支持多平台构建
 FROM --platform=$BUILDPLATFORM python:3.11-slim-bullseye
-
+RUN apt-get update && apt-get install -y curl
 # 获取目标平台（由 buildx 自动传入）
 ARG TARGETPLATFORM
 
