@@ -40,4 +40,4 @@ jobs:
             --platform linux/amd64 \
             --output "type=image,push=true" \
             --file Dockerfile-hub \
-            --tag skylerhe/halalcloud:latest
+            --tag skylerhe/alist:latest
